@@ -1,6 +1,6 @@
+use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
 use std::thread;
-use std::io::{Error, ErrorKind, Read, Result, Write};
 
 const MAX_MESSAGE_SIZE: usize = 4096;
 

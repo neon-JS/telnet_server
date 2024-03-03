@@ -1,6 +1,6 @@
 mod iter;
-mod telnet;
 mod tcp;
+mod telnet;
 
 use crate::tcp::{create_tcp_server, TcpStreamHandler};
 use crate::telnet::{create_telnet_session, TelnetSession, TelnetSessionHandler};

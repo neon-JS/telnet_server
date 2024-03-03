@@ -47,22 +47,34 @@ mod tests {
 
     #[test]
     fn finds_match_start() {
-        assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![1, 2, 3]), true);
+        assert_eq!(
+            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![1, 2, 3]),
+            true
+        );
     }
 
     #[test]
     fn finds_match_middle() {
-        assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![2, 3, 4]), true);
+        assert_eq!(
+            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![2, 3, 4]),
+            true
+        );
     }
 
     #[test]
     fn finds_match_end() {
-        assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 4, 5]), true);
+        assert_eq!(
+            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 4, 5]),
+            true
+        );
     }
 
     #[test]
     fn finds_no_match() {
-        assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 3, 3]), false);
+        assert_eq!(
+            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 3, 3]),
+            false
+        );
     }
 
     #[test]
