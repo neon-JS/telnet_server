@@ -9,9 +9,9 @@
 ///
 /// ```
 /// // [1, 2, 3] is included in [1, 2, 3, 4, 5] -> returns true
-/// assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![1, 2, 3]), true);
+/// assert!(contains_sequence(&[1, 2, 3, 4, 5], &[1, 2, 3]));
 /// // [3, 3, 3] is *NOT* included in [1, 2, 3, 4, 5] -> returns false
-/// assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 3, 3]), false);
+/// assert!(!contains_sequence(&[1, 2, 3, 4, 5], &[3, 3, 3]));
 /// ```
 pub fn contains_sequence<T: Eq>(haystack: &[T], needle: &[T]) -> bool {
     let haystack_len = haystack.len();
@@ -47,48 +47,36 @@ mod tests {
 
     #[test]
     fn finds_match_start() {
-        assert_eq!(
-            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![1, 2, 3]),
-            true
-        );
+        assert!(contains_sequence(&[1, 2, 3, 4, 5], &[1, 2, 3]));
     }
 
     #[test]
     fn finds_match_middle() {
-        assert_eq!(
-            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![2, 3, 4]),
-            true
-        );
+        assert!(contains_sequence(&[1, 2, 3, 4, 5], &[2, 3, 4]));
     }
 
     #[test]
     fn finds_match_end() {
-        assert_eq!(
-            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 4, 5]),
-            true
-        );
+        assert!(contains_sequence(&[1, 2, 3, 4, 5], &[3, 4, 5]));
     }
 
     #[test]
     fn finds_no_match() {
-        assert_eq!(
-            contains_sequence(&vec![1, 2, 3, 4, 5], &vec![3, 3, 3]),
-            false
-        );
+        assert!(!contains_sequence(&[1, 2, 3, 4, 5], &[3, 3, 3]));
     }
 
     #[test]
     fn finds_match_empty() {
-        assert_eq!(contains_sequence(&vec![1, 2, 3, 4, 5], &vec![]), true);
+        assert!(contains_sequence(&[1, 2, 3, 4, 5], &[]));
     }
 
     #[test]
     fn finds_no_match_on_empty_haystack() {
-        assert_eq!(contains_sequence(&vec![], &vec![1]), false);
+        assert!(!contains_sequence(&[], &[1]));
     }
 
     #[test]
     fn finds_no_match_on_empty_haystack_and_needle() {
-        assert_eq!(contains_sequence::<u8>(&vec![], &vec![]), false);
+        assert!(!contains_sequence::<u8>(&[], &[]));
     }
 }
