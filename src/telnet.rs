@@ -1,6 +1,7 @@
 use crate::iter::contains_sequence;
 
 const CHAR_ECHO: u8 = 1;
+const CHAR_BEL: u8 = 7;
 const CHAR_BACK_SPACE: u8 = 8;
 const CHAR_ESCAPE: u8 = 27;
 const CHAR_DELETE: u8 = 127;
@@ -204,7 +205,7 @@ fn update_session_escape_sequence(session: &mut TelnetSession, next: u8) -> Opti
     }
 
     session.state = TelnetState::Idle;
-    None
+    Some(vec![CHAR_BEL])
 }
 
 /// Erases the current line from given text buffer. According to
