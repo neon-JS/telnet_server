@@ -1,4 +1,4 @@
-use crate::iter::contains_sequence;
+use crate::iter::{contains_sequence, dequeue};
 
 const CHAR_ECHO: u8 = 1;
 const CHAR_BEL: u8 = 7;
@@ -17,6 +17,7 @@ const CHAR_IAC: u8 = 255;
 
 const CHARS_LINE_BREAK: [char; 2] = ['\r', '\n'];
 
+/// May identify the end of an ANSI escape sequence
 const CHARS_ESCAPE_SEQUENCE_END: [char; 20] = [
     'A', /* CUU */
     'B', /* CUD */
@@ -40,79 +41,99 @@ const CHARS_ESCAPE_SEQUENCE_END: [char; 20] = [
     'l', /* DECTCEM */
 ];
 
+/// Telnet session "state machine", represents the current state
+/// of a Telnet session.
 pub struct TelnetSession {
     pub message: Vec<char>,
+    /// Stream of incoming, not interpreted data
     stream: Vec<u8>,
+    /// Current state of the session
     state: TelnetState,
+    /// Returns whether every incoming, non-command char should be echoed back to the client
     is_echoing: bool,
 }
 
+/// Enumeration of states that the `TelnetSession` may have on the server side.
 enum TelnetState {
+    /// Incoming, non-command data (e.g. text)
     Idle,
+    /// Incoming command data (e.g. WILL, WONT, DO, DONT)
     Command,
+    /// Incoming command data for WILL command
     CommandWill,
+    /// Incoming command data for WONT command
     CommandWont,
+    /// Incoming command data for DO command
     CommandDo,
+    /// Incoming command data for DONT command
     CommandDont,
+    /// Incoming command data for sub negotiation command
     SubNegotiation,
+    /// Incoming escape sequence
     AnsiEscapeSequence,
 }
 
-/* Dummy trait (very similar to TcpStreamHandler) that is necessary to enclose all Telnet internal
- * stuff to the telnet mod and to make it possible to create some message handler (content based
- * rather than structure based) in the main mod. This trait will be used by the main mod. */
-pub trait TelnetSessionHandler {
-    /// Accepts incoming data and maybe sends a response that will be sent back
-    fn accept_data(&mut self, data: &[u8]) -> Option<Vec<u8>>;
-}
+impl TelnetSession {
+    /// Accepts incoming tcp stream data and maybe returns a response that should be sent
+    /// back to the client.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Incoming TCP stream data
+    ///
+    /// # Returns
+    ///
+    /// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
+    pub fn accept_data(&mut self, data: &[u8]) -> Option<Vec<u8>> {
+        /* Append incoming data */
+        self.stream.extend_from_slice(data);
+        let mut response: Vec<u8> = vec![];
 
-impl TelnetSessionHandler for TelnetSession {
-    fn accept_data(&mut self, data: &[u8]) -> Option<Vec<u8>> {
-        update_session(self, data)
-    }
-}
+        while let Some(next) = dequeue(&mut self.stream) {
+            let result = match self.state {
+                TelnetState::Idle => update_session_idle(self, next),
+                TelnetState::Command => update_session_command(self, next),
+                TelnetState::CommandWill => update_session_will(self, next),
+                TelnetState::CommandWont => update_session_wont(self, next),
+                TelnetState::CommandDo => update_session_do(self, next),
+                TelnetState::CommandDont => update_session_dont(self, next),
+                TelnetState::SubNegotiation => update_session_sub_negotiation(self, next),
+                TelnetState::AnsiEscapeSequence => update_session_escape_sequence(self, next),
+            };
 
-pub fn create_telnet_session() -> TelnetSession {
-    TelnetSession {
-        message: vec![],
-        stream: vec![],
-        state: TelnetState::Idle,
-        is_echoing: false,
-    }
-}
+            if let Some(v) = result {
+                response.extend_from_slice(v.as_slice());
+            }
+        }
 
-fn update_session(session: &mut TelnetSession, data: &[u8]) -> Option<Vec<u8>> {
-    /* Append incoming data */
-    session.stream.extend_from_slice(data);
-
-    let mut response: Vec<u8> = vec![];
-
-    while let Some(&next) = session.stream.first() {
-        session.stream.remove(0);
-
-        let result = match session.state {
-            TelnetState::Idle => update_session_idle(session, next),
-            TelnetState::Command => update_session_command(session, next),
-            TelnetState::CommandWill => update_session_will(session, next),
-            TelnetState::CommandWont => update_session_wont(session, next),
-            TelnetState::CommandDo => update_session_do(session, next),
-            TelnetState::CommandDont => update_session_dont(session, next),
-            TelnetState::SubNegotiation => update_session_sub_negotiation(session, next),
-            TelnetState::AnsiEscapeSequence => update_session_escape_sequence(session, next),
-        };
-
-        if let Some(v) = result {
-            response.extend_from_slice(v.as_slice());
+        if !response.is_empty() {
+            Some(response)
+        } else {
+            None
         }
     }
 
-    if !response.is_empty() {
-        Some(response)
-    } else {
-        None
+    /// Creates a new `TelnetSettion`
+    pub fn create() -> TelnetSession {
+        TelnetSession {
+            message: vec![],
+            stream: vec![],
+            state: TelnetState::Idle,
+            is_echoing: false,
+        }
     }
 }
 
+/// Updates given `session` in `TelnetState::Idle` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_idle(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     match next {
         CHAR_IAC => session.state = TelnetState::Command,
@@ -138,6 +159,16 @@ fn update_session_idle(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>>
     None
 }
 
+/// Updates given `session` in `TelnetState::Command` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_command(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     match next {
         CHAR_WILL => session.state = TelnetState::CommandWill,
@@ -153,18 +184,48 @@ fn update_session_command(session: &mut TelnetSession, next: u8) -> Option<Vec<u
     None
 }
 
+/// Updates given `session` in `TelnetState::Will` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_will(session: &mut TelnetSession, _next: u8) -> Option<Vec<u8>> {
     /* Ignore message, just go back to idle state */
     session.state = TelnetState::Idle;
     None
 }
 
+/// Updates given `session` in `TelnetState::Wont` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_wont(session: &mut TelnetSession, _next: u8) -> Option<Vec<u8>> {
     /* Ignore message, just go back to idle state */
     session.state = TelnetState::Idle;
     None
 }
 
+/// Updates given `session` in `TelnetState::Do` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_do(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     session.state = TelnetState::Idle;
 
@@ -177,6 +238,16 @@ fn update_session_do(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     Some(vec![CHAR_IAC, CHAR_WONT, next])
 }
 
+/// Updates given `session` in `TelnetState::Dont` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_dont(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     session.state = TelnetState::Idle;
 
@@ -189,6 +260,16 @@ fn update_session_dont(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>>
     Some(vec![CHAR_IAC, CHAR_WONT, next])
 }
 
+/// Updates given `session` in `TelnetState::SubNegotiation` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_sub_negotiation(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     /* We're NOT handling sub negotiations right now. */
     if next == CHAR_SUB_NEGOTIATION_END {
@@ -198,6 +279,16 @@ fn update_session_sub_negotiation(session: &mut TelnetSession, next: u8) -> Opti
     None
 }
 
+/// Updates given `session` in `TelnetState::AnsiEscapeSequence` based on `next` incoming byte
+///
+/// # Arguments
+///
+/// * `session` - The affected `TelnetSession`
+/// * `next` - The next incoming byte
+///
+/// # Returns
+///
+/// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_escape_sequence(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     /* We're NOT handling those escape sequences. */
     if !CHARS_ESCAPE_SEQUENCE_END.contains(&(next as char)) {
@@ -212,6 +303,7 @@ fn update_session_escape_sequence(session: &mut TelnetSession, next: u8) -> Opti
 /// [RFC-854](https://www.rfc-editor.org/rfc/rfc854#page-13), the last CRLF should be kept.
 ///
 /// Arguments
+///
 /// * `buffer` - Text buffer that should be updated
 fn erase_current_line(buffer: &mut Vec<char>) {
     loop {

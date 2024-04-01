@@ -3,13 +3,12 @@ mod tcp;
 mod telnet;
 
 use crate::tcp::{create_tcp_server, TcpStreamHandler};
-use crate::telnet::{create_telnet_session, TelnetSession, TelnetSessionHandler};
+use crate::telnet::TelnetSession;
 
 const BIND_ADDRESS: &str = "127.0.0.1:9000";
 
 fn main() -> std::io::Result<()> {
-    let _ = create_tcp_server(BIND_ADDRESS, create_telnet_session);
-
+    let _ = create_tcp_server(BIND_ADDRESS, TelnetSession::create);
     Ok(())
 }
 
@@ -32,9 +31,9 @@ impl TcpStreamHandler for TelnetSession {
     }
 }
 
-fn generate_message_response(telnet_session: &mut TelnetSession) -> Option<Vec<u8>>
-{
-    let message = telnet_session.message
+fn generate_message_response(telnet_session: &mut TelnetSession) -> Option<Vec<u8>> {
+    let message = telnet_session
+        .message
         .iter()
         .map(|&c| c as u8)
         .collect::<Vec<u8>>();

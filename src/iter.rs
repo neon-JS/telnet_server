@@ -41,6 +41,28 @@ pub fn contains_sequence<T: Eq>(haystack: &[T], needle: &[T]) -> bool {
     false
 }
 
+/// Dequeues item from given `vec`, meaning returning and removing its first item.
+///
+/// # Arguments
+///
+/// * `vec` - The `Vec<T>` to dequeue the item from
+///
+/// # Examples
+///
+/// ```
+/// let mut vec = vec![1, 2];
+/// assert_eq!(dequeue(&mut vec), Some(1));
+/// assert_eq!(dequeue(&mut vec), Some(2));
+/// assert_eq!(dequeue(&mut vec), None);
+/// ```
+pub fn dequeue<T>(vec: &mut Vec<T>) -> Option<T> {
+    if vec.is_empty() {
+        None
+    } else {
+        Some(vec.remove(0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +100,13 @@ mod tests {
     #[test]
     fn finds_no_match_on_empty_haystack_and_needle() {
         assert!(!contains_sequence::<u8>(&[], &[]));
+    }
+
+    #[test]
+    fn dequeue_works() {
+        let mut vec = vec![1, 2];
+        assert_eq!(dequeue(&mut vec), Some(1));
+        assert_eq!(dequeue(&mut vec), Some(2));
+        assert_eq!(dequeue(&mut vec), None);
     }
 }

@@ -1,11 +1,20 @@
-use std::io::{Error, ErrorKind, Read, Result, Write};
-use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
+use std::io::{Read, Result, Write};
+use std::net::{Shutdown, TcpListener, ToSocketAddrs};
 use std::thread;
 
 const MAX_MESSAGE_SIZE: usize = 4096;
 
+/// Generic handler for TCP connections
 pub trait TcpStreamHandler {
     /// Accepts incoming tcp stream data and maybe sends a response that will be sent back
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Incoming TCP stream data
+    ///
+    /// # Returns
+    ///
+    /// If `Some(Vec<u8>)` is returned, it will be sent to other side of the TCP stream.
     fn accept(&mut self, data: &[u8]) -> Option<Vec<u8>>;
 }
 
@@ -31,53 +40,44 @@ pub fn create_tcp_server<A: ToSocketAddrs, B: TcpStreamHandler + 'static>(
     let listener = TcpListener::bind(bind_address)?;
 
     for stream in listener.incoming() {
-        let stream = stream?;
-
         thread::spawn(move || {
-            /* if unwrap would fail, that's okay as the connection will be closed anyway.
-             * So to not break other connections, just go default. */
-            handle_client(stream, build_tcp_stream_handler).unwrap_or_default()
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(_) => {
+                    /* Stream not available. Just drop this client. */
+                    return;
+                }
+            };
+
+            let mut buffer: [u8; MAX_MESSAGE_SIZE] = [0; MAX_MESSAGE_SIZE];
+            let mut stream_handler = build_tcp_stream_handler();
+
+            loop {
+                /* Try loading next client message / command */
+                let read_bytes = match stream.read(&mut buffer) {
+                    Ok(0) => {
+                        /* Connection closed. Shutdown may fail but we'll ignore that as
+                         * the client is dropped anyway. */
+                        stream.shutdown(Shutdown::Both).unwrap_or_default();
+                        return;
+                    }
+                    Ok(c) => c,
+                    Err(_) => {
+                        /* Stream not available. Just drop this client. */
+                        return;
+                    }
+                };
+
+                /* Handle message / command */
+                if let Some(answer) = stream_handler.accept(&buffer[..read_bytes]) {
+                    if stream.write_all(answer.as_slice()).is_err() {
+                        /* Stream not available. Just drop this client. */
+                        return;
+                    }
+                }
+            }
         });
     }
 
     Ok(listener)
-}
-
-fn handle_client<B: TcpStreamHandler>(
-    mut stream: TcpStream,
-    build_tcp_stream_handler: fn() -> B,
-) -> Result<()> {
-    let mut message: Vec<u8> = vec![];
-    let mut buffer: [u8; 100] = [0; 100];
-    let mut stream_handler = build_tcp_stream_handler();
-
-    loop {
-        /* Try loading next client message / command */
-        message.clear();
-
-        'read_buffer: loop {
-            let read_bytes = stream.read(&mut buffer)?;
-            message.extend_from_slice(&buffer[0..read_bytes]);
-
-            if read_bytes < buffer.len() {
-                break 'read_buffer;
-            }
-
-            if message.len() > MAX_MESSAGE_SIZE {
-                stream.shutdown(Shutdown::Both)?;
-                return Err(Error::new(ErrorKind::OutOfMemory, "Buffer overflow"));
-            }
-        }
-
-        if message.is_empty() {
-            /* Connection closed. */
-            stream.shutdown(Shutdown::Both)?;
-            return Ok(());
-        }
-
-        /* Handle message / command */
-        if let Some(answer) = stream_handler.accept(&message) {
-            stream.write_all(answer.as_slice())?;
-        }
-    }
 }
