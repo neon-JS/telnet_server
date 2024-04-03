@@ -1,8 +1,30 @@
 [package]
 name = "telnet_server"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["Niklas 'Curly' Schmidt <github+curly@likely.gay>"]
+description = "A bare telnet server provider"
+readme = "README.md"
+repository = "https://github.com/neon-JS/telnet_server"
+license = "MIT"
+keywords = ["telnet", "telnet-server"]
+exclude = [
+    ".github/",
+    ".vscode/",
+    "resources/",
+    "src/bin/",
+    "telnet_docker/",
+    ".gitignore",
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "telnet_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "telnet_server"
+path = "src/bin/main.rs"
+
 
 [dependencies]
+log = "0.4"

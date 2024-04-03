@@ -8,6 +8,8 @@
 /// # Examples
 ///
 /// ```
+/// use telnet_server::iter::contains_sequence;
+///
 /// // [1, 2, 3] is included in [1, 2, 3, 4, 5] -> returns true
 /// assert!(contains_sequence(&[1, 2, 3, 4, 5], &[1, 2, 3]));
 /// // [3, 3, 3] is *NOT* included in [1, 2, 3, 4, 5] -> returns false
@@ -50,6 +52,8 @@ pub fn contains_sequence<T: Eq>(haystack: &[T], needle: &[T]) -> bool {
 /// # Examples
 ///
 /// ```
+/// use telnet_server::iter::dequeue;
+///
 /// let mut vec = vec![1, 2];
 /// assert_eq!(dequeue(&mut vec), Some(1));
 /// assert_eq!(dequeue(&mut vec), Some(2));

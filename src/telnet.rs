@@ -1,3 +1,5 @@
+use log::error;
+
 use crate::iter::{contains_sequence, dequeue};
 
 const CHAR_ECHO: u8 = 1;
@@ -44,7 +46,8 @@ const CHARS_ESCAPE_SEQUENCE_END: [char; 20] = [
 /// Telnet session "state machine", represents the current state
 /// of a Telnet session.
 pub struct TelnetSession {
-    pub message: Vec<char>,
+    /// Buffer for read non-command data (aka. incoming message)
+    data: Vec<char>,
     /// Stream of incoming, not interpreted data
     stream: Vec<u8>,
     /// Current state of the session
@@ -113,10 +116,54 @@ impl TelnetSession {
         }
     }
 
+    /// Returns currently read (non-command) data from data stream
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use telnet_server::telnet::TelnetSession;
+    ///
+    /// let telnet_session = TelnetSession::create();
+    ///
+    /// // data (e.g. a user-name) is sent from client...
+    ///
+    /// let data = telnet_session.get_data_buffer();
+    /// let message = data.iter().collect::<String>();
+    /// println!("{}", message); // "admin"
+    /// ```
+    pub fn get_data_buffer(&self) -> &Vec<char> {
+        &self.data
+    }
+
+    /// Clears currently read (non-command) data from buffer.
+    /// This can be useful if you already handled the data and don't need it anymore.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use telnet_server::telnet::TelnetSession;
+    ///
+    /// let mut telnet_session = TelnetSession::create();
+    ///
+    /// // data (e.g. a user-name) is sent from client...
+    ///
+    /// let data = telnet_session.get_data_buffer();
+    /// let message = data.iter().collect::<String>();
+    /// println!("{}", message); // "admin"
+    ///
+    /// telnet_session.clear_data_buffer();
+    ///
+    /// let data = telnet_session.get_data_buffer();
+    /// assert!(data.is_empty());
+    /// ```
+    pub fn clear_data_buffer(&mut self) {
+        self.data.clear()
+    }
+
     /// Creates a new `TelnetSettion`
     pub fn create() -> TelnetSession {
         TelnetSession {
-            message: vec![],
+            data: vec![],
             stream: vec![],
             state: TelnetState::Idle,
             is_echoing: false,
@@ -138,17 +185,17 @@ fn update_session_idle(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>>
     match next {
         CHAR_IAC => session.state = TelnetState::Command,
         CHAR_DELETE | CHAR_BACK_SPACE | CHAR_ERASE_CHARACTER => {
-            session.message.pop();
+            session.data.pop();
 
             if session.is_echoing {
                 /* Return fake backspace on echo mode */
                 return Some(vec![CHAR_BACK_SPACE, b' ', CHAR_BACK_SPACE]);
             }
         }
-        CHAR_ERASE_LINE => erase_current_line(&mut session.message),
+        CHAR_ERASE_LINE => erase_current_line(&mut session.data),
         CHAR_ESCAPE => session.state = TelnetState::AnsiEscapeSequence,
         _ => {
-            session.message.push(next as char);
+            session.data.push(next as char);
 
             if session.is_echoing {
                 return Some(vec![next]);
@@ -176,10 +223,8 @@ fn update_session_command(session: &mut TelnetSession, next: u8) -> Option<Vec<u
         CHAR_DO => session.state = TelnetState::CommandDo,
         CHAR_DONT => session.state = TelnetState::CommandDont,
         CHAR_SUB_NEGOTIATION => session.state = TelnetState::SubNegotiation,
-        _ => {
-            println!("Not implemented command: {}", next);
-        }
-    }
+        _ => error!("Not implemented command: {next}"),
+    };
 
     None
 }
@@ -273,7 +318,7 @@ fn update_session_dont(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>>
 fn update_session_sub_negotiation(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
     /* We're NOT handling sub negotiations right now. */
     if next == CHAR_SUB_NEGOTIATION_END {
-        session.state = TelnetState::Idle
+        session.state = TelnetState::Idle;
     }
 
     None
@@ -319,5 +364,26 @@ fn erase_current_line(buffer: &mut Vec<char>) {
         }
 
         buffer.pop();
+    }
+}
+
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+
+    #[test]
+    fn erase_current_line_should_work() {
+        let mut buffer = vec!['a', 'b', 'c', '\r', '\n', 'd', 'e', 'f'];
+        erase_current_line(&mut buffer);
+        /* RFC-854: The recipient should delete characters from the data stream back to, but
+         * not including, the last "CR LF" sequence sent over the TELNET connection. */
+        assert_eq!(buffer, ['a', 'b', 'c', '\r', '\n']);
+
+        erase_current_line(&mut buffer);
+        assert_eq!(buffer, ['a', 'b', 'c', '\r', '\n']);
+
+        let mut buffer = vec!['a', 'b', 'c', 'd', 'e', 'f'];
+        erase_current_line(&mut buffer);
+        assert!(buffer.is_empty());
     }
 }
