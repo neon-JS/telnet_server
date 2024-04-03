@@ -8,14 +8,7 @@ readme = "README.md"
 repository = "https://github.com/neon-JS/telnet_server"
 license = "MIT"
 keywords = ["telnet", "telnet-server"]
-exclude = [
-    ".github/",
-    ".vscode/",
-    "resources/",
-    "src/bin/",
-    "telnet_docker/",
-    ".gitignore",
-]
+exclude = [".github/", ".vscode/", "resources/", "telnet_docker/", ".gitignore"]
 
 [lib]
 name = "telnet_server"
@@ -24,7 +17,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "telnet_server"
 path = "src/bin/main.rs"
-
 
 [dependencies]
 log = "0.4"

@@ -1,0 +1,23 @@
+name: Cargo security audit
+on:
+  schedule:
+    - cron: "31 1 * * *"
+
+  push:
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+jobs:
+  audit:
+    defaults:
+      run:
+        working-directory: ./backend
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
