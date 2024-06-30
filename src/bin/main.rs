@@ -19,7 +19,7 @@ fn main() -> std::io::Result<()> {
                 }
             };
 
-            let mut telnet_session = TelnetSession::create();
+            let mut telnet_session = TelnetSession::create(true);
             let mut buffer: [u8; MAX_MESSAGE_SIZE] = [0; MAX_MESSAGE_SIZE];
             let mut response = vec![];
 

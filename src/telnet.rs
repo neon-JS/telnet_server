@@ -54,6 +54,8 @@ pub struct TelnetSession {
     state: TelnetState,
     /// Returns whether every incoming, non-command char should be echoed back to the client
     is_echoing: bool,
+    /// Buffer for currently read ANSI escape sequence, if they should be passed on
+    ansi_escape_sequence_buffer: Option<Vec<char>>,
 }
 
 /// Enumeration of states that the `TelnetSession` may have on the server side.
@@ -161,12 +163,23 @@ impl TelnetSession {
     }
 
     /// Creates a new `TelnetSettion`
-    pub fn create() -> TelnetSession {
+    ///
+    /// # Arguments
+    /// * `pass_ansi_escape_sequences` - if true, ANSI escape sequences will be
+    ///   handled, returned etc. Otherwise they will be ignored
+    pub fn create(pass_ansi_escape_sequences: bool) -> TelnetSession {
+        let ansi_escape_sequence_buffer = if pass_ansi_escape_sequences {
+            Some(vec![])
+        } else {
+            None
+        };
+
         TelnetSession {
             data: vec![],
             stream: vec![],
             state: TelnetState::Idle,
             is_echoing: false,
+            ansi_escape_sequence_buffer,
         }
     }
 }
@@ -193,7 +206,12 @@ fn update_session_idle(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>>
             }
         }
         CHAR_ERASE_LINE => erase_current_line(&mut session.data),
-        CHAR_ESCAPE => session.state = TelnetState::AnsiEscapeSequence,
+        CHAR_ESCAPE => {
+            session.state = TelnetState::AnsiEscapeSequence;
+            if let Some(buffer) = session.ansi_escape_sequence_buffer.as_mut() {
+                buffer.push(next as char);
+            }
+        }
         _ => {
             session.data.push(next as char);
 
@@ -335,13 +353,29 @@ fn update_session_sub_negotiation(session: &mut TelnetSession, next: u8) -> Opti
 ///
 /// If `Some(Vec<u8>)` is returned, it should be sent to the Telnet client.
 fn update_session_escape_sequence(session: &mut TelnetSession, next: u8) -> Option<Vec<u8>> {
-    /* We're NOT handling those escape sequences. */
-    if !CHARS_ESCAPE_SEQUENCE_END.contains(&(next as char)) {
-        return None;
-    }
+    if let Some(buffer) = session.ansi_escape_sequence_buffer.as_mut() {
+        buffer.push(next as char);
 
-    session.state = TelnetState::Idle;
-    Some(vec![CHAR_BEL])
+        if !CHARS_ESCAPE_SEQUENCE_END.contains(&(next as char)) {
+            return None;
+        }
+
+        let escape_sequence = buffer.iter().map(|&c| c as u8).collect();
+
+        session.state = TelnetState::Idle;
+        session.data.extend_from_slice(buffer.as_slice());
+        buffer.clear();
+
+        Some(escape_sequence)
+    } else {
+        if !CHARS_ESCAPE_SEQUENCE_END.contains(&(next as char)) {
+            return None;
+        }
+
+        session.state = TelnetState::Idle;
+
+        Some(vec![CHAR_BEL])
+    }
 }
 
 /// Erases the current line from given text buffer. According to
